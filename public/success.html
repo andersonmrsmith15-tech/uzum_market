@@ -17,21 +17,22 @@
     <a href="/" class="primary" style="display:inline-block;text-decoration:none;margin-top:12px">Do'konga qaytish</a>
   </div>
   <script>
-    const id = new URLSearchParams(location.search).get("session_id");
-    fetch("/api/session/" + encodeURIComponent(id || ""))
+    const som = (n) => Math.round(n).toLocaleString("ru-RU").replace(/,/g, " ") + " so'm";
+    const id = new URLSearchParams(location.search).get("order");
+    const $ = (s) => document.getElementById(s);
+    fetch("/api/orders/" + encodeURIComponent(id || ""))
       .then((r) => r.json())
       .then((d) => {
         if (d.status === "paid") {
           localStorage.removeItem("cart");
-          document.getElementById("title").textContent = "✅ To'lov muvaffaqiyatli!";
-          document.getElementById("msg").textContent =
-            `Summa: ${(d.amount / 100).toFixed(2)} ${d.currency.toUpperCase()}` + (d.email ? ` · Chek: ${d.email}` : "");
+          $("title").textContent = "✅ To'lov muvaffaqiyatli!";
+          $("msg").textContent = `Buyurtma ${d.order_id} · ${som(d.amount_uzs)} · karta ${d.card}`;
         } else {
-          document.getElementById("title").textContent = "To'lov yakunlanmadi";
-          document.getElementById("msg").textContent = d.error || "Holat: " + d.status;
+          $("title").textContent = "To'lov yakunlanmadi";
+          $("msg").textContent = d.error || "Holat: " + d.status;
         }
       })
-      .catch(() => (document.getElementById("title").textContent = "Holatni tekshirib bo'lmadi"));
+      .catch(() => ($("title").textContent = "Holatni tekshirib bo'lmadi"));
   </script>
 </body>
 </html>

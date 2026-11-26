@@ -14,6 +14,7 @@ async function init() {
       fetch("/api/categories").then((r) => r.json()),
       fetch("/api/products").then((r) => r.json()),
     ]);
+    rate = (await fetch("/api/config").then((r) => r.json())).usd_uzs_rate || rate;
     if (!Array.isArray(products)) throw new Error(products.error);
   } catch (e) {
     $("#grid").innerHTML = `<p class="err">Mahsulotlarni yuklab bo'lmadi: ${esc(e.message)}</p>`;
@@ -105,7 +106,8 @@ function renderCart() {
     .map(([id, qty]) => ({ p: products.find((x) => x.id === +id), qty }))
     .filter((e) => e.p);
   $("#cartCount").textContent = entries.reduce((s, e) => s + e.qty, 0);
-  $("#cartTotal").textContent = money(entries.reduce((s, e) => s + finalPrice(e.p) * e.qty, 0));
+  $("#cartTotal").innerHTML = esc(money(entries.reduce((s, e) => s + finalPrice(e.p) * e.qty, 0))) +
+    (entries.length ? `<span class="sum-uzs">${esc(som(cartUzs()))}</span>` : "");
   $("#checkoutBtn").disabled = !entries.length;
   $("#cartItems").innerHTML = entries.length
     ? entries
@@ -138,27 +140,119 @@ function closeCart() {
   if (location.hash === "#cart") history.replaceState(null, "", location.pathname);
 }
 
-async function checkout() {
-  const btn = $("#checkoutBtn");
-  btn.disabled = true;
-  btn.textContent = "Yuborilmoqda…";
-  $("#checkoutErr").textContent = "";
+// ---- To'lov (Fake Click Pay) ----
+let rate = 12800; // 1 USD -> so'm, serverdan olinadi
+const som = (n) => Math.round(n).toLocaleString("ru-RU").replace(/,/g, " ") + " so'm";
+const cartEntries = () => Object.entries(cart).map(([id, qty]) => ({ p: products.find((x) => x.id === +id), qty })).filter((e) => e.p);
+// Server bilan bir xil hisob: har bir dona narxi so'mga yaxlitlanadi
+const cartUzs = () => cartEntries().reduce((s, { p, qty }) => s + Math.round(Math.round(finalPrice(p) * 100) / 100 * rate) * qty, 0);
+let pay = { orderId: null };
+
+function checkout() {
+  closeCart();
+  $("#paySum").textContent = som(cartUzs());
+  $("#paySumUsd").textContent = `≈ ${$("#cartTotal").firstChild?.textContent || ""} · kurs 1$ = ${som(rate)}`;
+  showStep("card");
+  $("#payModal").showModal();
+  $("#cardNumber").focus();
+}
+
+function showStep(step) {
+  $("#cardStep").hidden = step !== "card";
+  $("#otpStep").hidden = step !== "otp";
+  $("#cardErr").textContent = $("#otpErr").textContent = "";
+}
+
+function setBusy(btn, busy, label) {
+  btn.disabled = busy;
+  if (label) btn.textContent = busy ? "Kutilmoqda…" : label;
+}
+
+function showDemoOtp(code) {
+  const el = $("#demoOtp");
+  el.hidden = !code;
+  if (code) el.innerHTML = `🧪 Demo rejim: SMS o'rniga kod shu yerda — <b>${esc(code)}</b>`;
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(d.error || "Xatolik yuz berdi"), { code: d.code });
+  return d;
+}
+
+$("#cardNumber").addEventListener("input", (e) => {
+  e.target.value = e.target.value.replace(/\D/g, "").slice(0, 16).replace(/(\d{4})(?=\d)/g, "$1 ");
+});
+$("#cardExpiry").addEventListener("input", (e) => {
+  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+  e.target.value = v.length > 2 ? v.slice(0, 2) + "/" + v.slice(2) : v;
+});
+$("#otpInput").addEventListener("input", (e) => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6); });
+
+$("#cardStep").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("#payBtn");
+  setBusy(btn, true, "Davom etish");
+  $("#cardErr").textContent = "";
   try {
     const items = Object.entries(cart).map(([id, qty]) => ({ id: +id, qty }));
-    const r = await fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error);
-    location.href = d.url;
-  } catch (e) {
-    $("#checkoutErr").textContent = e.message || "Xatolik yuz berdi";
-    btn.disabled = false;
-    btn.textContent = "To'lovga o'tish";
+    const d = await postJSON("/api/checkout", { items, card_number: $("#cardNumber").value, expiry: $("#cardExpiry").value });
+    pay.orderId = d.order.order_id;
+    $("#paySum").textContent = som(d.order.amount_uzs);
+    $("#otpCard").textContent = d.order.card;
+    showDemoOtp(d.demo_otp);
+    $("#otpInput").value = "";
+    showStep("otp");
+    $("#otpInput").focus();
+  } catch (err) {
+    $("#cardErr").textContent = err.message;
+  } finally {
+    setBusy(btn, false, "Davom etish");
   }
-}
+});
+
+$("#otpStep").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("#otpBtn");
+  setBusy(btn, true, "Tasdiqlash va to'lash");
+  $("#otpErr").textContent = "";
+  try {
+    const d = await postJSON("/api/checkout/confirm", { order_id: pay.orderId, otp: $("#otpInput").value });
+    if (d.order.status === "paid") {
+      cart = {};
+      saveCart();
+      location.href = "/success.html?order=" + encodeURIComponent(d.order.order_id);
+      return;
+    }
+    $("#otpErr").textContent = "To'lov yakunlanmadi";
+  } catch (err) {
+    $("#otpErr").textContent = err.message;
+    // Qayta urinib bo'lmaydigan xato -> karta bosqichiga qaytish
+    if (["OTP_EXPIRED", "OTP_ATTEMPTS_EXCEEDED", "INSUFFICIENT_FUNDS", "CARD_BLOCKED"].includes(err.code)) {
+      setTimeout(() => { showStep("card"); $("#cardErr").textContent = err.message; }, 1800);
+    }
+  } finally {
+    setBusy(btn, false, "Tasdiqlash va to'lash");
+  }
+});
+
+$("#resendBtn").addEventListener("click", async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  try {
+    const d = await postJSON("/api/checkout/resend", { order_id: pay.orderId });
+    showDemoOtp(d.demo_otp);
+    $("#otpErr").textContent = "";
+    btn.textContent = "Kod yuborildi ✓";
+    setTimeout(() => { btn.textContent = "Kodni qayta yuborish"; btn.disabled = false; }, 30000);
+  } catch (err) {
+    $("#otpErr").textContent = err.message;
+    btn.disabled = false;
+  }
+});
+$("#backBtn").addEventListener("click", () => showStep("card"));
+$("#payClose").addEventListener("click", () => $("#payModal").close());
 
 // ---- Hodisalar ----
 document.addEventListener("click", (e) => {
