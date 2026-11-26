@@ -182,4 +182,13 @@ $("#closeCart").addEventListener("click", closeCart);
 $("#overlay").addEventListener("click", closeCart);
 $("#checkoutBtn").addEventListener("click", checkout);
 
+// Rasm yuklanmasa — zaxira belgi
+const FALLBACK_IMG = "data:image/svg+xml," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f0f1f5"/><text x="50" y="60" font-size="36" text-anchor="middle">🔌</text></svg>'
+);
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (img.tagName === "IMG" && img.src !== FALLBACK_IMG) img.src = FALLBACK_IMG;
+}, true);
+
 init();
