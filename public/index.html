@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elektro Market — elektr qurilmalari do'koni</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <a href="#" class="logo">⚡ Elektro<b>Market</b></a>
+    <input id="search" type="search" placeholder="Qurilma qidirish…" />
+    <button id="cartBtn" class="cart-btn">🛒 Savatcha <span id="cartCount">0</span></button>
+  </header>
+
+  <nav id="cats" class="cats"></nav>
+
+  <main>
+    <div class="toolbar">
+      <span id="resultInfo"></span>
+      <select id="sort">
+        <option value="">Saralash</option>
+        <option value="price-asc">Arzonroq</option>
+        <option value="price-desc">Qimmatroq</option>
+        <option value="rating">Reyting</option>
+      </select>
+    </div>
+    <div id="grid" class="grid"><p class="muted">Yuklanmoqda…</p></div>
+  </main>
+
+  <!-- Mahsulot oynasi -->
+  <dialog id="productModal" class="modal"><div id="productBody"></div></dialog>
+
+  <!-- Savatcha -->
+  <aside id="cart" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Savatcha</h2>
+      <button id="closeCart" class="icon">✕</button>
+    </div>
+    <div id="cartItems" class="cart-items"></div>
+    <div class="drawer-foot">
+      <div class="total">Jami: <b id="cartTotal">$0.00</b></div>
+      <button id="checkoutBtn" class="primary wide">To'lovga o'tish</button>
+      <p id="checkoutErr" class="err"></p>
+    </div>
+  </aside>
+  <div id="overlay" class="overlay"></div>
+
+  <footer>© Elektro Market · Ma'lumotlar: dummyjson.com</footer>
+  <script src="app.js"></script>
+</body>
+</html>
